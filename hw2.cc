@@ -2,8 +2,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-
+#include <omp.h>
+#include <mpi.h>
 #include <lodepng.h>
+#include <iostream>
 
 #define GLM_FORCE_SWIZZLE  // vec3.xyz(), vec3.xyx() ...ect, these are called "Swizzle".
 // https://glm.g-truc.net/0.9.1/api/a00002.html
@@ -44,6 +46,7 @@ vec3 target_pos;  // target position in 3D space (x, y, z)
 
 unsigned char* raw_image;  // 1D image
 unsigned char** image;     // 2D image
+
 
 // save raw_image to PNG file
 void write_png(const char* filename) {
@@ -151,9 +154,11 @@ int main(int argc, char** argv) {
     // x2 y2 z2: target position in 3D space
     // width height: image size
     // filename: filename
+    // std::cout << argc << std::endl;
     assert(argc == 11);
 
     //---init arguments
+    int world_rank, world_size;
     num_threads = atoi(argv[1]);
     camera_pos = vec3(atof(argv[2]), atof(argv[3]), atof(argv[4]));
     target_pos = vec3(atof(argv[5]), atof(argv[6]), atof(argv[7]));
@@ -165,6 +170,11 @@ int main(int argc, char** argv) {
 
     iResolution = vec2(width, height);
     //---
+    // MPI init
+    
+	MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
     //---create image
     raw_image = new unsigned char[width * height * 4];
@@ -176,7 +186,16 @@ int main(int argc, char** argv) {
     //---
 
     //---start rendering
+    int num_of_tasks = (height / world_size) + 1;
+    int start = (height * world_rank) / world_size;
+    int end = (height * (world_rank + 1)) / world_size;
+    char new_image = new unsigned char*[num_of_tasks];
+    for (int i = start; i < end; ++i) {
+        new_image[i] = raw_image + i * width * 4;
+    }
     for (int i = 0; i < height; ++i) {
+        int count = 0;
+        #pragma omp parallel for schedule(dynamic)
         for (int j = 0; j < width; ++j) {
             vec4 fcol(0.);  // final color (RGBA 0 ~ 1)
 
@@ -266,9 +285,10 @@ int main(int argc, char** argv) {
             // print progress
             printf("rendering...%5.2lf%%\r", current_pixel / total_pixel * 100.);
         }
+        count++;
     }
     //---
-
+    // MPI_Gather (v, 2, MPI_INT, u, 2, INT, 0, MPI_COMM_WORLD);
     //---saving image
     write_png(argv[10]);
     //---
@@ -277,6 +297,7 @@ int main(int argc, char** argv) {
     delete[] raw_image;
     delete[] image;
     //---
+    MPI_Finalize();
 
     return 0;
 }

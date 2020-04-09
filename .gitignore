@@ -2,3 +2,6 @@ testcases/
 build.ninja
 hw2-diff
 runner.py
+lodepng.o
+hw2
+*.png
