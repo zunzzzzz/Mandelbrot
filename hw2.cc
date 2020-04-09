@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <omp.h>
+#include <time.h> 
 #include <mpi.h>
 #include <lodepng.h>
 #include <iostream>
@@ -190,7 +191,6 @@ int main(int argc, char** argv) {
     //---start rendering
     int start = (height * world_rank) / world_size;
     int end = (height * (world_rank + 1)) / world_size;
-    int num_of_tasks = end - start;
     int receive_count[world_size];
     int display[world_size];
     for (int i = 0; i < world_size; i++) {
@@ -203,6 +203,7 @@ int main(int argc, char** argv) {
 
 
     int count = 0;
+    clock_t t = clock();
     for (int i = start; i < end; ++i) {
         #pragma omp parallel for schedule(dynamic)
         for (int j = 0; j < width; ++j) {
@@ -294,6 +295,8 @@ int main(int argc, char** argv) {
         }
         count++;
     }
+    t = clock() - t;
+    std::cout << ((float) t) / CLOCKS_PER_SEC << std::endl; 
     //---
 
     if (world_rank == 0) {
@@ -306,6 +309,8 @@ int main(int argc, char** argv) {
     }
     //---saving image
     // write_png(argv[10]);
+    t = clock() - t;
+    std::cout << ((float) t) / CLOCKS_PER_SEC << std::endl; 
     if(world_rank == 0) write_png(argv[10]);
     //---
 
