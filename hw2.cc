@@ -156,9 +156,12 @@ int main(int argc, char** argv) {
     // filename: filename
     // std::cout << argc << std::endl;
     assert(argc == 11);
-
-    //---init arguments
     int world_rank, world_size;
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    //---init arguments
+    
     num_threads = atoi(argv[1]);
     camera_pos = vec3(atof(argv[2]), atof(argv[3]), atof(argv[4]));
     target_pos = vec3(atof(argv[5]), atof(argv[6]), atof(argv[7]));
@@ -172,29 +175,35 @@ int main(int argc, char** argv) {
     //---
     // MPI init
     
-	MPI_Init(NULL, NULL);
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+	
 
     //---create image
     raw_image = new unsigned char[width * height * 4];
     image = new unsigned char*[height];
 
-    for (int i = 0; i < height; ++i) {
+    for (int i = 0; i < height; i++) {
         image[i] = raw_image + i * width * 4;
     }
     //---
 
+
     //---start rendering
-    int num_of_tasks = (height / world_size) + 1;
     int start = (height * world_rank) / world_size;
     int end = (height * (world_rank + 1)) / world_size;
-    char new_image = new unsigned char*[num_of_tasks];
-    for (int i = start; i < end; ++i) {
-        new_image[i] = raw_image + i * width * 4;
+    int num_of_tasks = end - start;
+    int receive_count[world_size];
+    int display[world_size];
+    for (int i = 0; i < world_size; i++) {
+        receive_count[i] = (height * (i + 1)) / world_size - (height * i) / world_size;
     }
-    for (int i = 0; i < height; ++i) {
-        int count = 0;
+    for (int i = 0; i < world_size; i++) {
+        if(i == 0) display[i] = 0;
+        else display[i] = display[i - 1] + receive_count[i - 1];
+    }
+
+
+    int count = 0;
+    for (int i = start; i < end; ++i) {
         #pragma omp parallel for schedule(dynamic)
         for (int j = 0; j < width; ++j) {
             vec4 fcol(0.);  // final color (RGBA 0 ~ 1)
@@ -267,7 +276,6 @@ int main(int argc, char** argv) {
                         col += spe * 0.8;                       // specular
                     }
                     //---
-
                     col = glm::clamp(glm::pow(col, vec3(.4545)), 0., 1.);  // gamma correction
                     fcol += vec4(col, 1.);
                 }
@@ -281,16 +289,24 @@ int main(int argc, char** argv) {
             image[i][4 * j + 2] = (unsigned char)fcol.b;  // b
             image[i][4 * j + 3] = 255;                    // a
 
+
             current_pixel++;
-            // print progress
-            printf("rendering...%5.2lf%%\r", current_pixel / total_pixel * 100.);
         }
         count++;
     }
     //---
-    // MPI_Gather (v, 2, MPI_INT, u, 2, INT, 0, MPI_COMM_WORLD);
+
+    if (world_rank == 0) {
+        for (int i = 1; i < world_size; i++) {
+            MPI_Recv(&(image[display[i]][0]), receive_count[i] * 4 * width, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+    }
+    else {
+        MPI_Send(&(image[start][0]), receive_count[world_rank] * 4 * width, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
+    }
     //---saving image
-    write_png(argv[10]);
+    // write_png(argv[10]);
+    if(world_rank == 0) write_png(argv[10]);
     //---
 
     //---finalize
