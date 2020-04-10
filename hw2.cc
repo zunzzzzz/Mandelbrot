@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
     int count = 0;
     clock_t t = clock();
     for (int i = world_rank; i < height; i += world_size) {
-        #pragma omp parallel for schedule(dynamic)
+        #pragma omp parallel for schedule(dynamic) num_threads(num_threads)
         for (int j = 0; j < width; ++j) {
             vec4 fcol(0.);  // final color (RGBA 0 ~ 1)
 
