@@ -118,6 +118,7 @@ double softshadow(vec3 ro, vec3 rd, double k) {
         res = glm::min(
             res, k * h / t);  // closer to the objects, k*h/t terms will produce darker shadow
         if (res < 0.02) return 0.02;
+        // std::cout << i << std::endl;
         t += glm::clamp(h, .001, step_limiter);  // move ray
     }
     return glm::clamp(res, .02, 1.);
@@ -138,6 +139,7 @@ double trace(vec3 ro, vec3 rd, double& trap, int& ID) {
     double len = 0;  // current distance
 
     for (int i = 0; i < ray_step; ++i) {
+    // for (int i = 0; i < ray_step; i += steps) {
         len = map(ro + rd * t, trap,
             ID);  // get minimum distance from current ray position to the object's surface
         if (glm::abs(len) < eps || t > far_plane) break;
@@ -204,7 +206,7 @@ int main(int argc, char** argv) {
 
     int count = 0;
     clock_t t = clock();
-    for (int i = start; i < end; ++i) {
+    for (int i = world_rank; i < height; i += world_size) {
         #pragma omp parallel for schedule(dynamic)
         for (int j = 0; j < width; ++j) {
             vec4 fcol(0.);  // final color (RGBA 0 ~ 1)
@@ -296,21 +298,25 @@ int main(int argc, char** argv) {
         count++;
     }
     t = clock() - t;
-    std::cout << ((float) t) / CLOCKS_PER_SEC << std::endl; 
+    // std::cout << ((float) t) / CLOCKS_PER_SEC << std::endl; 
     //---
 
     if (world_rank == 0) {
         for (int i = 1; i < world_size; i++) {
-            MPI_Recv(&(image[display[i]][0]), receive_count[i] * 4 * width, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            for (int j = i; j < height; j += world_size) {
+                MPI_Recv(&(image[j][0]), 4 * width, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            }
         }
     }
     else {
-        MPI_Send(&(image[start][0]), receive_count[world_rank] * 4 * width, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
+        for (int i = world_rank; i < height; i += world_size) {
+            MPI_Send(&(image[i][0]), 4 * width, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
+        }
     }
     //---saving image
     // write_png(argv[10]);
     t = clock() - t;
-    std::cout << ((float) t) / CLOCKS_PER_SEC << std::endl; 
+    // std::cout << ((float) t) / CLOCKS_PER_SEC << std::endl; 
     if(world_rank == 0) write_png(argv[10]);
     //---
 
