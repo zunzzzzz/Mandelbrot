@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <omp.h>
-#include <time.h> 
 #include <mpi.h>
 #include <lodepng.h>
 #include <iostream>
@@ -191,21 +190,6 @@ int main(int argc, char** argv) {
 
 
     //---start rendering
-    int start = (height * world_rank) / world_size;
-    int end = (height * (world_rank + 1)) / world_size;
-    int receive_count[world_size];
-    int display[world_size];
-    for (int i = 0; i < world_size; i++) {
-        receive_count[i] = (height * (i + 1)) / world_size - (height * i) / world_size;
-    }
-    for (int i = 0; i < world_size; i++) {
-        if(i == 0) display[i] = 0;
-        else display[i] = display[i - 1] + receive_count[i - 1];
-    }
-
-
-    int count = 0;
-    clock_t t = clock();
     for (int i = world_rank; i < height; i += world_size) {
         #pragma omp parallel for schedule(dynamic) num_threads(num_threads)
         for (int j = 0; j < width; ++j) {
@@ -295,12 +279,8 @@ int main(int argc, char** argv) {
 
             current_pixel++;
         }
-        count++;
     }
-    t = clock() - t;
-    // std::cout << ((float) t) / CLOCKS_PER_SEC << std::endl; 
     //---
-
     if (world_rank == 0) {
         for (int i = 1; i < world_size; i++) {
             for (int j = i; j < height; j += world_size) {
@@ -314,9 +294,6 @@ int main(int argc, char** argv) {
         }
     }
     //---saving image
-    // write_png(argv[10]);
-    t = clock() - t;
-    // std::cout << ((float) t) / CLOCKS_PER_SEC << std::endl; 
     if(world_rank == 0) write_png(argv[10]);
     //---
 
